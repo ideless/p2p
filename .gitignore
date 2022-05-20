@@ -1,0 +1,9 @@
+.vscode
+
+CMakeLists.txt.user
+build
+build_qt
+
+test/example.pcap
+test/decrypted-packets.txt
+test/key-seed.txt
