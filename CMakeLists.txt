@@ -34,9 +34,11 @@ else()
 	)
 	set_target_properties(p2p PROPERTIES LINK_FLAGS "\
 		--no-entry\
+		--closure 1\
 		-O3\
 		-s EXPORT_ES6=1\
 		-s MODULARIZE=1\
+		-s ALLOW_MEMORY_GROWTH=1\
 	    -s EXPORTED_FUNCTIONS=\"[\
 	        '_malloc',\
 	        '_free',\

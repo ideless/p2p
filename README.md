@@ -16,10 +16,8 @@ emmake make
 
 # Usage
 
-> If you use Vite and compile p2p with flag `-O2` or `-O3`, it seems that you
-have to manually "beautify" the compiled p2p.js (for example on
-https://beautifier.io/), otherwise p2p wouldn't work as expected when you build
-your Vite project. I assume it is a bug of Vite.
+> Manually "beautify" the compiled p2p.js (for example on
+https://beautifier.io/), if p2p wouldn't work as expected.
 
 ```ts
 /* say you have compiled p2p.js & p2p.wasm */
