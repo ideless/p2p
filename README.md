@@ -2,6 +2,8 @@
 
 Yuanshen **P**cap **T**o **P**rotobuf wasm parser.
 
+Supports 2.7.
+
 # Build
 
 Make sure you have [emsdk](https://emscripten.org/docs/getting_started/downloads.html) and [cmake](https://cmake.org/download/) installed.
@@ -17,7 +19,7 @@ emmake make
 # Usage
 
 > Manually "beautify" the compiled p2p.js (for example on
-https://beautifier.io/), if p2p wouldn't work as expected.
+https://beautifier.io/), if p2p does not work as expected.
 
 ```ts
 /* say you have compiled p2p.js & p2p.wasm */
@@ -66,12 +68,12 @@ Module().then((p2p: any) => {
         let protobuf_size = p2p_decrypt_packet(p2p_ctx_ptr,
             protobuf_ptr, packetid_ptr) /* check size, -1: end, -2: err */
         let packetid = (new Uint16Array(p2p.HEAPU8.buffer, packetid_ptr, 2))[0]
-        if (packetid == 133) {
+        if (packetid == 131) {
             let root = await protobuf.load('./proto/GetPlayerTokenRsp.proto')
             let GetPlayerTokenRsp = root.lookup('GetPlayerTokenRsp') as any
             let msg = GetPlayerTokenRsp.decode(new Uint8Array(p2p.HEAPU8.buffer, protobuf_ptr, protobuf_size))
             p2p_set_key_seed(p2p_ctx_ptr, msg.secretKeySeed.toString())
-        } else if (packetid == 660) {
+        } else if (packetid == 609) {
             let root = await protobuf.load('./proto/PlayerStoreNotify.proto')
             let PlayerStoreNotify = root.lookup('PlayerStoreNotify') as any
             let msg = PlayerStoreNotify.decode(new Uint8Array(p2p.HEAPU8.buffer, protobuf_ptr, protobuf_size))
@@ -92,6 +94,12 @@ Module().then((p2p: any) => {
 })
 ```
 
+# TODO
+
+* setValue
+* pre/post js
+
 # Credit
 
 * Iridium
+* Ec2b

@@ -126,7 +126,7 @@ void p2p_set_key_seed(struct p2p_ctx *ctx, const char *seed_str)
             read_uint16_be(ctx->key_buf, 0), ctx->key_len);
 }
 
-int p2p_slice_token(uint8_t *data, uint32_t length, uint8_t *buf)
+int p2p_slice_kcp_token(uint8_t *data, uint32_t length, uint8_t *buf)
 {
     uint32_t pos;
     uint32_t sliced_len;
@@ -221,7 +221,7 @@ int p2p_prepare_cur(struct p2p_ctx *ctx)
         ctx->cur = ctx->client;
     }
 
-    p2p_log(ctx, 2, "original data (%d bytes):\n", pkt->length);
+    p2p_log(ctx, 2, "kcp+token data (%d bytes):\n", pkt->length);
     p2p_log_raw(ctx, 2, pkt->data, pkt->length);
 
     if (ctx->buf_len < pkt->length) {
@@ -231,13 +231,13 @@ int p2p_prepare_cur(struct p2p_ctx *ctx)
         ctx->buf = realloc(ctx->buf, ctx->buf_len);
     }
 
-    input_len = p2p_slice_token(pkt->data, pkt->length, ctx->buf);
+    input_len = p2p_slice_kcp_token(pkt->data, pkt->length, ctx->buf);
     if (input_len < 0) {
         pcap_free_udp4_packet(pkt);
         return ERROR;
     }
 
-    p2p_log(ctx, 2, "input data (%d bytes):\n", input_len);
+    p2p_log(ctx, 2, "kcp data (%d bytes):\n", input_len);
     p2p_log_raw(ctx, 2, ctx->buf, input_len);
 
     ikcp_input(ctx->cur, (char *)ctx->buf, input_len);
@@ -254,45 +254,47 @@ int p2p_prepare_key_buf(struct p2p_ctx *ctx, int recv_len)
         fprintf(stderr, "fail to set initial key: len < 2\n");
         return ERROR;
     }
-    if (ctx->key_buf != NULL && ctx->override) {
+    if (ctx->override) {
+        assert(ctx->key_buf != NULL);
         return SUCCESS;
     }
 
     uint8_t *key;
+    size_t key_len;
     uint16_t head;
 
     head = read_uint16_be(ctx->buf, 0) ^ 0x4567;
+    /* check current key by head */
+    if (ctx->key_buf != NULL && ctx->key_len >= 2 &&
+        head == read_uint16_be(ctx->key_buf, 0)) {
+        return SUCCESS;
+    }
+
+    /* guess key */
     switch (head) {
+    case 0x61e8:
+        key = yskey_61e8;
+        key_len = sizeof(yskey_61e8);
+        break;
     case 0x369c:
         key = yskey_369c;
-        break;
-    case 0x8f95:
-        key = yskey_8f95;
-        break;
-    case 0xadad:
-        key = yskey_adad;
+        key_len = sizeof(yskey_369c);
         break;
     case 0xc958:
         key = yskey_c958;
-        break;
-    case 0xe86d:
-        key = yskey_e86d;
+        key_len = sizeof(yskey_c958);
         break;
     default:
         fprintf(stderr, "fail to set initial key: unknown key 0x%04X\n", head);
         return ERROR;
     }
 
-    if (ctx->key_buf != NULL && ctx->key_len == 4096 &&
-        head == read_uint16_be(ctx->key_buf, 0)) {
-        return SUCCESS;
-    }
-
-    if (ctx->key_buf == NULL || ctx->key_len != 4096) {
-        ctx->key_len = 4096;
+    /* assign key */
+    if (ctx->key_buf == NULL || ctx->key_len != key_len) {
+        ctx->key_len = key_len;
         ctx->key_buf = realloc(ctx->key_buf, ctx->key_len);
     }
-    memcpy(ctx->key_buf, key, 4096);
+    memcpy(ctx->key_buf, key, ctx->key_len);
     p2p_log(ctx, 1, "set key: 0x%04X (%d bytes)\n", read_uint16_be(key, 0),
             ctx->key_len);
 

@@ -36,7 +36,7 @@ int main()
     ctx = p2p_open(data, length);
 
     ctx->logger = stdout;
-    ctx->verbose = 0;
+    ctx->verbose = 5;
 
     proto_buf = malloc(length);
     while ((packet_size = p2p_decrypt_packet(ctx, proto_buf, &packet_id)) >=
