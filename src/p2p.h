@@ -21,7 +21,7 @@ struct p2p_ctx {
     uint8_t *buf;  /* buffer chunk */
     uint32_t buf_len; /* len of buffer */
     FILE *logger;
-    uint8_t verbose;
+    int verbose;
 };
 
 /**
@@ -44,5 +44,10 @@ void p2p_set_key_seed(struct p2p_ctx *, const char *);
  * @return size of protobuf, or -1 if reached the end, or -2 if failed
  */
 int32_t p2p_decrypt_packet(struct p2p_ctx *, uint8_t *, uint16_t *);
+
+/**
+ * @brief set logger, default is NULL
+ */
+void p2p_set_logger(struct p2p_ctx *, FILE *, int);
 
 #endif

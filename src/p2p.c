@@ -10,7 +10,7 @@
 #define EAGAIN -1
 #define ERROR -2
 
-void p2p_log(struct p2p_ctx *ctx, uint8_t verbose, const char *format, ...)
+void p2p_log(struct p2p_ctx *ctx, int verbose, const char *format, ...)
 {
     if (ctx->logger == NULL || ctx->verbose < verbose) {
         return;
@@ -21,8 +21,7 @@ void p2p_log(struct p2p_ctx *ctx, uint8_t verbose, const char *format, ...)
     va_end(argptr);
 }
 
-void p2p_log_raw(struct p2p_ctx *ctx, uint8_t verbose, uint8_t *data,
-                 size_t length)
+void p2p_log_raw(struct p2p_ctx *ctx, int verbose, uint8_t *data, size_t length)
 {
     if (ctx->logger == NULL || ctx->verbose < verbose || length == 0) {
         return;
@@ -365,4 +364,10 @@ int p2p_decrypt_packet(struct p2p_ctx *ctx, uint8_t *proto_buf,
     p2p_log_raw(ctx, 0, proto_buf, slice_end - slice_start);
 
     return slice_end - slice_start;
+}
+
+void p2p_set_logger(struct p2p_ctx *ctx, FILE *logger, int verbose)
+{
+    ctx->logger = logger;
+    ctx->verbose = verbose;
 }
