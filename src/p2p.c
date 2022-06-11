@@ -93,19 +93,9 @@ void p2p_close(struct p2p_ctx *ctx)
     free(ctx);
 }
 
-void p2p_set_key_seed(struct p2p_ctx *ctx, const char *seed_str)
+void p2p_pad_key(struct p2p_ctx *ctx, struct mt19937_64_ctx *mt, uint8_t le)
 {
-    uint64_t seed;
-    struct mt19937_64_ctx mt_ctx;
     uint64_t r;
-
-    seed = strtoull(seed_str, NULL, 10);
-
-    mt19937_64_seed(&mt_ctx, seed);
-    seed = mt19937_64_rand(&mt_ctx);
-
-    mt19937_64_seed(&mt_ctx, seed);
-    mt19937_64_rand(&mt_ctx);
 
     if (ctx->key_buf == NULL || ctx->key_len != 4096) {
         ctx->key_len = 4096;
@@ -114,10 +104,30 @@ void p2p_set_key_seed(struct p2p_ctx *ctx, const char *seed_str)
 
     for (int i = 0; i < 4096; ++i) {
         if (i % 8 == 0) {
-            r = mt19937_64_rand(&mt_ctx);
+            r = mt19937_64_rand(mt);
         }
-        ctx->key_buf[i] = r >> ((7 - (i % 8)) * 8);
+        if (le == 0) {
+            ctx->key_buf[i] = r >> ((7 - (i % 8)) * 8);
+        } else {
+            ctx->key_buf[i] = r >> ((i % 8) * 8);
+        }
     }
+}
+
+void p2p_set_key_seed(struct p2p_ctx *ctx, const char *seed_str)
+{
+    uint64_t seed;
+    struct mt19937_64_ctx mt;
+
+    seed = strtoull(seed_str, NULL, 10);
+
+    mt19937_64_seed(&mt, seed);
+    seed = mt19937_64_rand(&mt);
+
+    mt19937_64_seed(&mt, seed);
+    mt19937_64_rand(&mt);
+
+    p2p_pad_key(ctx, &mt, 0);
 
     ctx->override = 1;
 
@@ -154,6 +164,15 @@ int p2p_slice_kcp_token(uint8_t *data, uint32_t length, uint8_t *buf)
     }
 
     return length - sliced_len;
+}
+
+void p2p_realloc_buf(struct p2p_ctx *ctx, size_t size)
+{
+    if (ctx->buf_len < size) {
+        p2p_log(ctx, 1, "extend buf from %d to %d bytes\n", ctx->buf_len, size);
+        ctx->buf_len = size;
+        ctx->buf = realloc(ctx->buf, ctx->buf_len);
+    }
 }
 
 int p2p_null_kcp_output(const char *buf, int len, ikcpcb *kcp, void *user)
@@ -223,12 +242,7 @@ int p2p_prepare_cur(struct p2p_ctx *ctx)
     p2p_log(ctx, 2, "kcp+token data (%d bytes):\n", pkt->length);
     p2p_log_raw(ctx, 2, pkt->data, pkt->length);
 
-    if (ctx->buf_len < pkt->length) {
-        p2p_log(ctx, 1, "extend buf from %d to %d bytes\n", ctx->buf_len,
-                pkt->length);
-        ctx->buf_len = pkt->length;
-        ctx->buf = realloc(ctx->buf, ctx->buf_len);
-    }
+    p2p_realloc_buf(ctx, pkt->length);
 
     input_len = p2p_slice_kcp_token(pkt->data, pkt->length, ctx->buf);
     if (input_len < 0) {
@@ -258,9 +272,10 @@ int p2p_prepare_key_buf(struct p2p_ctx *ctx, int recv_len)
         return SUCCESS;
     }
 
-    uint8_t *key;
-    size_t key_len;
     uint16_t head;
+    struct mt19937_64_ctx mt;
+    uint64_t r;
+    uint16_t key_head;
 
     head = read_uint16_be(ctx->buf, 0) ^ 0x4567;
     /* check current key by head */
@@ -270,34 +285,21 @@ int p2p_prepare_key_buf(struct p2p_ctx *ctx, int recv_len)
     }
 
     /* guess key */
-    switch (head) {
-    case 0x61e8:
-        key = yskey_61e8;
-        key_len = sizeof(yskey_61e8);
-        break;
-    case 0x369c:
-        key = yskey_369c;
-        key_len = sizeof(yskey_369c);
-        break;
-    case 0xc958:
-        key = yskey_c958;
-        key_len = sizeof(yskey_c958);
-        break;
-    default:
-        fprintf(stderr, "fail to set initial key: unknown key 0x%04X\n", head);
-        return ERROR;
+    for (size_t i = 0; i < sizeof(yskeys) >> 3; ++i) {
+        mt19937_64_seed(&mt, yskeys[i]);
+        r = mt19937_64_rand(&mt);
+        key_head = ((r & 0x00ff) << 8) | ((r & 0xff00) >> 8);
+        if (key_head == head) {
+            mt19937_64_seed(&mt, yskeys[i]);
+            p2p_pad_key(ctx, &mt, 1);
+            p2p_log(ctx, 1, "set key: 0x%04X (%d bytes)\n", key_head,
+                    ctx->key_len);
+            return SUCCESS;
+        }
     }
 
-    /* assign key */
-    if (ctx->key_buf == NULL || ctx->key_len != key_len) {
-        ctx->key_len = key_len;
-        ctx->key_buf = realloc(ctx->key_buf, ctx->key_len);
-    }
-    memcpy(ctx->key_buf, key, ctx->key_len);
-    p2p_log(ctx, 1, "set key: 0x%04X (%d bytes)\n", read_uint16_be(key, 0),
-            ctx->key_len);
-
-    return SUCCESS;
+    fprintf(stderr, "fail to set initial key: unknown key 0x%04X\n", head);
+    return ERROR;
 }
 
 int p2p_decrypt_packet(struct p2p_ctx *ctx, uint8_t *proto_buf,
@@ -308,32 +310,28 @@ int p2p_decrypt_packet(struct p2p_ctx *ctx, uint8_t *proto_buf,
     int slice_start;
     int slice_end;
 
-    retcode = p2p_prepare_cur(ctx);
-    if (retcode < 0) {
-        return retcode;
+    while (1) {
+        if ((retcode = p2p_prepare_cur(ctx)) < 0) {
+            return retcode;
+        }
+
+        recv_len = ikcp_peeksize(ctx->cur);
+        p2p_log(ctx, 1, "peeksize: %d\n", recv_len);
+        if (recv_len < 0) {
+            p2p_log(ctx, 1, "recv nothing: %d\n", recv_len);
+            ctx->cur = NULL;
+        } else {
+            break;
+        }
     }
 
-    recv_len = ikcp_peeksize(ctx->cur);
-    p2p_log(ctx, 1, "peeksize: %d\n", recv_len);
-    if (recv_len < 0) {
-        p2p_log(ctx, 1, "recv nothing: %d\n", recv_len);
-        ctx->cur = NULL;
-        return p2p_decrypt_packet(ctx, proto_buf, packet_id);
-    }
-
-    if (ctx->buf_len < recv_len) {
-        p2p_log(ctx, 1, "extend buf from %d to %d bytes\n", ctx->buf_len,
-                recv_len);
-        ctx->buf_len = recv_len;
-        ctx->buf = realloc(ctx->buf, ctx->buf_len);
-    }
+    p2p_realloc_buf(ctx, recv_len);
     recv_len = ikcp_recv(ctx->cur, (char *)ctx->buf, ctx->buf_len);
 
     p2p_log(ctx, 2, "recv data (%d bytes):\n", recv_len);
     p2p_log_raw(ctx, 2, ctx->buf, recv_len);
 
-    retcode = p2p_prepare_key_buf(ctx, recv_len);
-    if (retcode < 0) {
+    if ((retcode = p2p_prepare_key_buf(ctx, recv_len)) < 0) {
         return retcode;
     }
     for (int i = 0; i < recv_len; ++i) {
@@ -350,7 +348,7 @@ int p2p_decrypt_packet(struct p2p_ctx *ctx, uint8_t *proto_buf,
         fprintf(stderr, "fail to read slice start\n");
         return ERROR;
     }
-    slice_start = 10 + ctx->buf[5] + ctx->buf[6];
+    slice_start = 10 + ctx->buf[5] + ctx->buf[6]; /* maybe */
     slice_end = recv_len - 2;
     if (slice_start > slice_end) {
         fprintf(stderr, "fail to slice [%d, %d)\n", slice_start, slice_end);
