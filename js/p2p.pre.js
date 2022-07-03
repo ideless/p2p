@@ -11,7 +11,7 @@ Module['Parser'] = function () {
     function xmalloc(size) {
         let ptr = _malloc(size)
         if (ptr == 0) {
-            throw new Error(`Failed allocation of ${size} bytes`)
+            throw new Error(`failed allocation of ${size} bytes`)
         }
         return ptr
     }
@@ -57,13 +57,16 @@ Module['Parser'] = function () {
                 id: (new Uint16Array(HEAPU8.buffer, pid_ptr, 1))[0],
                 protobuf: new Uint8Array(HEAPU8.buffer, pb_ptr, pb_size),
             }
+        } else if (pb_size < -1) {
+            throw new Error('fail to parse pcap file')
         }
     }
     this.parse = function (data, callback, verbose = -1) {
         this.open(data, verbose)
         let packet
         while ((packet = this.decryptPacket())) {
-            callback(packet, this)
+            if (callback(packet, this))
+                break
         }
         this.close()
     }

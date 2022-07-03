@@ -36,7 +36,7 @@ else()
         -O3\
         --minify 0\
         -s MODULARIZE=1\
-        -s EXPORT_ES6=1\
+        -s EXPORT_ES6=${VITE}\
         -s USE_ES6_IMPORT_META=${VITE}\
         -s ALLOW_MEMORY_GROWTH=1\
         -s EXPORTED_FUNCTIONS=\"[\

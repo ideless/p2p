@@ -1,3 +1,6 @@
 [submodule "src/kcp"]
 	path = src/kcp
 	url = https://github.com/skywind3000/kcp
+[submodule "test/GenshinData"]
+	path = test/GenshinData
+	url = https://github.com/Dimbreath/GenshinData
