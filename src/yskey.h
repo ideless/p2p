@@ -1,3 +1,8 @@
+/**
+ * this file is deprecated
+ * you should set dispatch key seeds in JS
+ */
+
 #include <inttypes.h>
 
 static uint64_t yskeys[] = {

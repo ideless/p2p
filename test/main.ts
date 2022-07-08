@@ -11,6 +11,9 @@ async function loadProto(name: string) {
 Module().then(async (p2p) => {
     let parser = new p2p.Parser()
 
+    parser.setLogLevel(1)
+    parser.setInitSeeds(['5030560303351918544'])
+
     let GetPlayerTokenRsp = await loadProto('GetPlayerTokenRsp')
     let PlayerStoreNotify = await loadProto('PlayerStoreNotify')
     let AvatarDataNotify = await loadProto('AvatarDataNotify')

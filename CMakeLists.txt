@@ -42,10 +42,10 @@ else()
         -s EXPORTED_FUNCTIONS=\"[\
             '_malloc',\
             '_free',\
-            '_stdout',\
             '_p2p_open',\
             '_p2p_close',\
             '_p2p_set_key_seed',\
+            '_p2p_set_init_seeds',\
             '_p2p_decrypt_packet',\
             '_p2p_set_logger'\
         ]\"\

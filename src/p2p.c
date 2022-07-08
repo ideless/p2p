@@ -23,22 +23,22 @@ void p2p_log(struct p2p_ctx *ctx, int verbose, const char *format, ...)
 
 void p2p_log_raw(struct p2p_ctx *ctx, int verbose, uint8_t *data, size_t length)
 {
-    if (ctx->logger == NULL || ctx->verbose < verbose || length == 0) {
+    if (ctx->verbose < verbose || length == 0) {
         return;
     }
     for (size_t i = 0; i < length; ++i) {
         if (i == 0) {
             /* do nothing */
         } else if (i % 16 == 4 || i % 16 == 8 || i % 16 == 12) {
-            printf("  ");
+            fprintf(ctx->logger, "  ");
         } else if (i && i % 16 == 0) {
-            printf("\n");
+            fprintf(ctx->logger, "\n");
         } else {
-            printf(" ");
+            fprintf(ctx->logger, " ");
         }
-        printf("%02X", data[i]);
+        fprintf(ctx->logger, "%02X", data[i]);
     }
-    printf("\n");
+    fprintf(ctx->logger, "\n");
 }
 
 void p2p_clear(struct p2p_ctx *ctx)
@@ -80,6 +80,9 @@ struct p2p_ctx *p2p_open(uint8_t *data, uint32_t length)
 
     p2p_init(ctx);
 
+    ctx->init_seeds = NULL;
+    ctx->seeds_count = 0;
+
     ctx->logger = NULL;
     ctx->verbose = 0;
 
@@ -90,6 +93,7 @@ void p2p_close(struct p2p_ctx *ctx)
 {
     pcap_close(ctx->pfile);
     p2p_clear(ctx);
+    free(ctx->init_seeds);
     free(ctx);
 }
 
@@ -133,6 +137,19 @@ void p2p_set_key_seed(struct p2p_ctx *ctx, const char *seed_str)
 
     p2p_log(ctx, 1, "override key: 0x%04X (%d bytes)\n",
             read_uint16_be(ctx->key_buf, 0), ctx->key_len);
+}
+
+void p2p_set_init_seeds(struct p2p_ctx *ctx, const char **seeds, uint32_t count)
+{
+    if (ctx->seeds_count < count) {
+        ctx->seeds_count = count;
+        ctx->init_seeds = realloc(ctx->init_seeds, count * sizeof(uint64_t));
+    }
+    p2p_log(ctx, 1, "set %d dispatch key seeds\n", count);
+    for (uint32_t i = 0; i < count; ++i) {
+        p2p_log(ctx, 1, "- %s\n", seeds[i]);
+        ctx->init_seeds[i] = strtoull(seeds[i], NULL, 10);
+    }
 }
 
 int p2p_slice_kcp_token(uint8_t *data, uint32_t length, uint8_t *buf)
@@ -274,7 +291,7 @@ int p2p_prepare_key_buf(struct p2p_ctx *ctx, int recv_len)
 
     uint16_t head;
     struct mt19937_64_ctx mt;
-    uint64_t r;
+    uint64_t seed, r;
     uint16_t key_head;
 
     head = read_uint16_be(ctx->buf, 0) ^ 0x4567;
@@ -285,12 +302,17 @@ int p2p_prepare_key_buf(struct p2p_ctx *ctx, int recv_len)
     }
 
     /* guess key */
-    for (size_t i = 0; i < sizeof(yskeys) >> 3; ++i) {
-        mt19937_64_seed(&mt, yskeys[i]);
+    for (size_t i = 0; i < ctx->seeds_count + (sizeof(yskeys) >> 3); ++i) {
+        if (i < ctx->seeds_count) {
+            seed = ctx->init_seeds[i];
+        } else {
+            seed = yskeys[i - ctx->seeds_count];
+        }
+        mt19937_64_seed(&mt, seed);
         r = mt19937_64_rand(&mt);
         key_head = ((r & 0x00ff) << 8) | ((r & 0xff00) >> 8);
         if (key_head == head) {
-            mt19937_64_seed(&mt, yskeys[i]);
+            mt19937_64_seed(&mt, seed);
             p2p_pad_key(ctx, &mt, 1);
             p2p_log(ctx, 1, "set key: 0x%04X (%d bytes)\n", key_head,
                     ctx->key_len);
@@ -366,6 +388,6 @@ int p2p_decrypt_packet(struct p2p_ctx *ctx, uint8_t *proto_buf,
 
 void p2p_set_logger(struct p2p_ctx *ctx, FILE *logger, int verbose)
 {
-    ctx->logger = logger;
+    ctx->logger = logger == NULL ? stdout : logger;
     ctx->verbose = verbose;
 }

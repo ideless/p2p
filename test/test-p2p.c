@@ -12,7 +12,8 @@ int main()
     uint8_t *proto_buf;
     uint16_t packet_id;
     int packet_size;
-    char key_seed[] = "13466961252085349383";
+    char *init_seeds[] = {"5030560303351918544"};
+    char key_seed[] = "14999200326815492164";
 
     file = fopen(filename, "rb");
     if (file == NULL) {
@@ -38,10 +39,12 @@ int main()
     ctx->logger = stdout;
     ctx->verbose = 5;
 
+    //    p2p_set_init_seeds(ctx, init_seeds, 1);
+
     proto_buf = malloc(length);
     while ((packet_size = p2p_decrypt_packet(ctx, proto_buf, &packet_id)) >=
            0) {
-        if (packet_id == 133) {
+        if (packet_id == 131) {
             p2p_set_key_seed(ctx, key_seed);
         }
     }
