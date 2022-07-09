@@ -141,29 +141,49 @@ void pcap_free_packet(struct pcap_packet *pkt)
 struct ether_header {
     uint8_t dst_mac[6]; // 0
     uint8_t src_mac[6]; // 6
-    uint16_t type; // 12
+    uint16_t type;      // 12
 };
 
 struct ipv4_header {
-    uint8_t version; // 14
-    uint8_t service; // 15
-    uint16_t total_length; // 16
+    uint8_t version;         // 14
+    uint8_t service;         // 15
+    uint16_t total_length;   // 16
     uint16_t identificaiton; // 18
-    uint8_t flags; // 20
+    uint8_t flags;           // 20
     uint8_t fragment_offset; // 21
-    uint8_t time_to_live; // 22
-    uint8_t protocol; // 23
-    uint16_t checksum; // 24
-    uint32_t src_ip; // 26
-    uint32_t dst_ip; // 30
+    uint8_t time_to_live;    // 22
+    uint8_t protocol;        // 23
+    uint16_t checksum;       // 24
+    uint32_t src_ip;         // 26
+    uint32_t dst_ip;         // 30
 };
 
 struct udp_header {
     uint16_t src_port; // 34
     uint16_t dst_port; // 36
-    uint16_t length; // 38
+    uint16_t length;   // 38
     uint16_t checksum; // 40
 };
+
+char *ip2str(uint32_t ip, char buf[])
+{
+    sprintf(buf, "%d.%d.%d.%d", (ip & 0xff000000) >> 24,
+            (ip & 0x00ff0000) >> 16, (ip & 0x0000ff00) >> 8, (ip & 0x000000ff));
+    return buf;
+}
+
+void print_raw(uint8_t *data, size_t length)
+{
+    for (size_t i = 0; i < length; ++i) {
+        if (i % 16 == 4 || i % 16 == 8 || i % 16 == 12) {
+            printf(" ");
+        } else if (i && i % 16 == 0) {
+            printf("\n");
+        }
+        printf("%02X ", data[i]);
+    }
+    printf("\n");
+}
 */
 
 struct pcap_udp4_packet *pcap_read_udp4_packet(struct pcap_file *pfile)
@@ -175,6 +195,8 @@ struct pcap_udp4_packet *pcap_read_udp4_packet(struct pcap_file *pfile)
 
     struct pcap_udp4_packet *pkt;
     uint8_t *buf;
+    uint16_t ipv4_len, udp_len;
+    // char ip_buf[16];
 
     pkt = malloc(sizeof *pkt);
 
@@ -187,10 +209,19 @@ struct pcap_udp4_packet *pcap_read_udp4_packet(struct pcap_file *pfile)
             return NULL;
         }
 
+        // printf("\n");
+        // printf("timestamp seconds: %d\n", pkt->header->timestamp_seconds);
+        // printf("timestamp microseconds: %d\n",
+        //        pkt->header->timestamp_microseconds);
+        // printf("captured length: %d\n", pkt->header->captured_length);
+        // printf("original length: %d\n", pkt->header->original_length);
+
         if (pkt->header->captured_length < 42) {
             /* Not a udp4 packet, skip it */
             pfile->pos += pkt->header->captured_length;
             free(pkt->header);
+            // printf("INFO captured length < 42, not a udp4 packet, skip
+            // it\n");
             continue;
         }
 
@@ -201,23 +232,81 @@ struct pcap_udp4_packet *pcap_read_udp4_packet(struct pcap_file *pfile)
             return NULL;
         }
 
-        if (read_uint16_be(buf, 12) != 0x0800 || buf[23] != 0x11) {
+        if (read_uint16_be(buf, 12) != 0x0800 || buf[23] != 17) {
             /* Not a udp4 packet, skip it */
             pfile->pos += pkt->header->captured_length - 42;
             free(pkt->header);
+            // printf("INFO not a ipv4 and udp packet\n");
             continue;
         }
 
+        // struct ether_header eth_hdr;
+        // struct ipv4_header ip4_hdr;
+        // struct udp_header udp_hdr;
+
+        // memcpy(eth_hdr.dst_mac, buf, 6);
+        // memcpy(eth_hdr.src_mac, buf + 6, 6);
+        // eth_hdr.type = read_uint16_be(buf, 12);
+
+        // ip4_hdr.version = buf[14];
+        // ip4_hdr.service = buf[15];
+        // ip4_hdr.total_length = read_uint16_be(buf, 16);
+        // ip4_hdr.identificaiton = read_uint16_be(buf, 18);
+        // ip4_hdr.flags = buf[20];
+        // ip4_hdr.fragment_offset = buf[21];
+        // ip4_hdr.time_to_live = buf[22];
+        // ip4_hdr.protocol = buf[23];
+        // ip4_hdr.checksum = read_uint16_be(buf, 24);
+        // ip4_hdr.src_ip = read_uint32_be(buf, 26);
+        // ip4_hdr.dst_ip = read_uint32_be(buf, 30);
+
+        // udp_hdr.src_port = read_uint16_be(buf, 34);
+        // udp_hdr.dst_port = read_uint16_be(buf, 36);
+        // udp_hdr.length = read_uint16_be(buf, 38);
+        // udp_hdr.checksum = read_uint16_be(buf, 40);
+
+        // printf("Ether header\n");
+        // printf("    dst_mac: %02x:%02x:%02x:%02x:%02x:%02x\n",
+        //        eth_hdr.dst_mac[0], eth_hdr.dst_mac[1], eth_hdr.dst_mac[2],
+        //        eth_hdr.dst_mac[3], eth_hdr.dst_mac[4], eth_hdr.dst_mac[5]);
+        // printf("    src_mac: %02x:%02x:%02x:%02x:%02x:%02x\n",
+        //        eth_hdr.src_mac[0], eth_hdr.src_mac[1], eth_hdr.src_mac[2],
+        //        eth_hdr.src_mac[3], eth_hdr.src_mac[4], eth_hdr.src_mac[5]);
+        // printf("    type   : %04x\n", eth_hdr.type);
+
+        // printf("IPv4 header\n");
+        // printf("    version: %d\n", ip4_hdr.version);
+        // printf("    service: %d\n", ip4_hdr.service);
+        // printf("    length : %d\n", ip4_hdr.total_length);
+        // printf("    id     : %d\n", ip4_hdr.identificaiton);
+        // printf("    flags  : %d\n", ip4_hdr.flags);
+        // printf("    frg_off: %d\n", ip4_hdr.fragment_offset);
+        // printf("    ttl    : %d\n", ip4_hdr.time_to_live);
+        // printf("    protoc : %d\n", ip4_hdr.protocol);
+        // printf("    chk_sum: %d\n", ip4_hdr.checksum);
+        // printf("    src_ip : %s\n", ip2str(ip4_hdr.src_ip, ip_buf));
+        // printf("    dst_ip : %s\n", ip2str(ip4_hdr.dst_ip, ip_buf));
+
+        // printf("UDP header\n");
+        // printf("    srcport: %d\n", udp_hdr.src_port);
+        // printf("    dstport: %d\n", udp_hdr.dst_port);
+        // printf("    length : %d\n", udp_hdr.length);
+        // printf("    chk_sum: %d\n", udp_hdr.checksum);
+
         /* length check */
-        assert(read_uint16_be(buf, 16) == pkt->header->captured_length - 14);
-        assert(read_uint16_be(buf, 38) == pkt->header->captured_length - 34);
+        ipv4_len = read_uint16_be(buf, 16);
+        udp_len = read_uint16_be(buf, 38);
+        /* I don't know why but sometimes data is padded */
+        assert(pkt->header->captured_length >= ipv4_len + 14);
+        assert(ipv4_len == udp_len + 20);
+        assert(udp_len >= 8);
 
         /* ip, port & length */
         pkt->src_ip = read_uint32_be(buf, 26);
         pkt->dst_ip = read_uint32_be(buf, 30);
         pkt->src_port = read_uint16_be(buf, 34);
         pkt->dst_port = read_uint16_be(buf, 36);
-        pkt->length = pkt->header->captured_length - 42;
+        pkt->length = udp_len - 8;
 
         /* data */
         if ((pkt->data = pcap_read_file(pfile, pkt->length)) == NULL) {
@@ -225,6 +314,17 @@ struct pcap_udp4_packet *pcap_read_udp4_packet(struct pcap_file *pfile)
             pcap_free_udp4_packet(pkt);
             return NULL;
         }
+
+        /* I don't know why but sometimes data is padded */
+        pfile->pos += pkt->header->captured_length - (ipv4_len + 14);
+
+        // if (ip4_hdr.total_length + 14 != pkt->header->captured_length ||
+        //     udp_hdr.length + 34 != pkt->header->captured_length) {
+        //     printf("ERROR length check failed: %d\n ",
+        //            (int)pkt->header->captured_length - 14 -
+        //                ip4_hdr.total_length);
+        //     // print_raw(pkt->data, pkt->length);
+        // }
 
         return pkt;
     }
